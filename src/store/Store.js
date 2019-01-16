@@ -32,12 +32,16 @@ class Store {
       throw new Error('patchStrategy must be one of the included patching strategies or a custom patching function');
     }
 
+    this.disconnected = false;
+
     this.portName = portName;
     this.readyResolved = false;
     this.readyPromise = new Promise(resolve => this.readyResolve = resolve);
 
     this.extensionId = extensionId; // keep the extensionId as an instance variable
     this.port = chrome.runtime.connect(this.extensionId, {name: portName});
+
+    this.deserializer = deserializer;
     this.serializedPortListener = withDeserializer(deserializer)((...args) => this.port.onMessage.addListener(...args));
     this.serializedMessageSender = withSerializer(serializer)((...args) => chrome.runtime.sendMessage(...args), 1);
     this.listeners = [];
@@ -66,6 +70,47 @@ class Store {
     });
 
     this.dispatch = this.dispatch.bind(this); // add this context to dispatch
+  }
+
+  /**
+   * Starts the port connection to receive any state changes
+   */
+  start() {
+    if (this.disconnected) {
+      this.disconnected = false;
+      this.port = chrome.runtime.connect(this.extensionId, {name: this.portName});
+
+      this.serializedPortListener = withDeserializer(this.deserializer)((...args) => this.port.onMessage.addListener(...args));
+      this.serializedPortListener(message => {
+        switch (message.type) {
+          case STATE_TYPE:
+            this.replaceState(message.payload);
+
+            if (!this.readyResolved) {
+              this.readyResolved = true;
+              this.readyResolve();
+            }
+            break;
+
+          case PATCH_STATE_TYPE:
+            this.patchState(message.payload);
+            break;
+
+          default:
+          // do nothing
+        }
+      });
+    }
+  }
+
+  /**
+   * Stops the port connection to avoid receiving any state changes
+   */
+  stop() {
+    this.port.disconnect();
+
+    this.disconnected = true;
+    this.readyResolved = false;
   }
 
   /**
