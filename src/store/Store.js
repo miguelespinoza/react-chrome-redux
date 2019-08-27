@@ -91,7 +91,7 @@ class Store {
   start() {
     if (this.disconnected) {
       this.disconnected = false;
-      this.port = this.browserAPI.runtime.connect(this.extensionId, {name: portName});
+      this.port = this.browserAPI.runtime.connect(this.extensionId, {name: this.portName});
 
       this.serializedPortListener = withDeserializer(this.deserializer)((...args) => this.port.onMessage.addListener(...args));
       this.serializedPortListener(message => {
